@@ -1,0 +1,6 @@
+model_checkpoint_path: "/home/dselsam/v2data/train/checkpoints/train_id21/model.ckpt-661581"
+all_model_checkpoint_paths: "/home/dselsam/v2data/train/checkpoints/train_id21/model.ckpt-0"
+all_model_checkpoint_paths: "/home/dselsam/v2data/train/checkpoints/train_id21/model.ckpt-158338"
+all_model_checkpoint_paths: "/home/dselsam/v2data/train/checkpoints/train_id21/model.ckpt-325547"
+all_model_checkpoint_paths: "/home/dselsam/v2data/train/checkpoints/train_id21/model.ckpt-493534"
+all_model_checkpoint_paths: "/home/dselsam/v2data/train/checkpoints/train_id21/model.ckpt-661581"
