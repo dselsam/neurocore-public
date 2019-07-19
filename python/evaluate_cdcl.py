@@ -1,12 +1,12 @@
 import ray
 import os
+import subprocess
 import cloudpickle
 import itertools
 import scipy
 import tempfile
 import uuid
 import traceback
-import Pyro4
 import dill as pickle
 import random
 import time
@@ -18,67 +18,74 @@ import json
 import numpy as np
 import tensorflow as tf
 from neurosat import apply_neurosat, NeuroSATParams, NeuroSATArgs
-import neurominisat
 from azure.storage.blob import BlockBlobService
 
 Task = collections.namedtuple('Task', ['eval_id', 'problem_id', 'solver_id', 'timeout_s'])
 
-def build_neurosat_config(sinfo):
-    def parse_mode(mode):
-        if mode == "NONE":        return neurominisat.NeuroSolverMode.NONE
-        elif mode == "NEURO":     return neurominisat.NeuroSolverMode.NEURO
-        elif mode == "RAND_SAME": return neurominisat.NeuroSolverMode.RAND_SAME
-        elif mode == "RAND_DIFF": return neurominisat.NeuroSolverMode.RAND_DIFF
-        
-    return neurominisat.NeuroSATConfig(
-        mode=parse_mode(sinfo['mode']),
-        n_secs_pause=(sinfo['n_secs_pause'] if sinfo['n_secs_pause'] is not None else 0.0),
-        max_lclause_size=(sinfo['max_lclause_size'] if sinfo['max_lclause_size'] is not None else 0),
-        max_n_nodes_cells=(sinfo['max_n_nodes_cells'] if sinfo['max_n_nodes_cells'] is not None else 0),
-        itau=(sinfo['itau'] if sinfo['itau'] is not None else 0.0),
-        scale=(sinfo['scale'] if sinfo['scale'] is not None else 0.0)
-    )
-     
+def call_solver(server, sinfo, dimacs, timeout_s, outfilename):
+    assert(sinfo['mode'] in ['NONE', 'RAND', 'NEURO'])
+    assert(sinfo['solver'] in ['GLUCOSE'])
+
+    def build_glucose_cmd(server, sinfo, dimacs, timeout_s, outfilename):
+        cmd = ['/home/dselsam/neurocore/hybrids/glucose/build/glucose', dimacs]
+        cmd.append('-mode=%s' % sinfo['mode'].upper())
+        cmd.append('-neuro-outfile=%s' % outfilename)
+        cmd.append('-verb=0')
+        cmd.append('-timeout-s=%d' % timeout_s)
+
+        if sinfo['n_secs_pause'] is not None: cmd.append('-n-secs-pause=%d' % round(sinfo['n_secs_pause']))
+        if sinfo['n_secs_pause_inc'] is not None: cmd.append('-n-secs-pause-inc=%d' % round(100 * sinfo['n_secs_pause_inc']))
+        if sinfo['max_lclause_size'] is not None: cmd.append('-max-lclause-size=%d' % sinfo['max_lclause_size'])
+        if sinfo['max_n_nodes_cells'] is not None: cmd.append('-max-n-nodes-cells=%d' % sinfo['max_n_nodes_cells'])
+        if sinfo['itau'] is not None: cmd.append('-itau=%d' % round(sinfo['itau']))
+        if sinfo['scale'] is not None: cmd.append('-scale=%d' % round(sinfo['scale']))
+
+        if sinfo['call_if_too_big'] is not None and sinfo['call_if_too_big']: cmd.append('-call-if-too-big')
+        elif sinfo['call_if_too_big'] is not None and not sinfo['call_if_too_big']: cmd.append('-no-call-if-too-big')
+
+        if sinfo['mode'] == 'NEURO': cmd.append('-server=%s' % server)
+        return cmd
+
+    if   sinfo['solver'] == 'GLUCOSE':   cmd = build_glucose_cmd(server, sinfo, dimacs, timeout_s, outfilename)
+    else:                                raise Exception("UNEXPECTED SOLVER")
+
+    try:
+        subprocess.run(cmd)
+        with open(outfilename, 'r') as f:
+            status, n_secs_user, n_calls, n_fails, n_secs_gpu = f.read().split(" ")
+        return status, float(n_secs_user), int(n_calls), int(n_fails), float(n_secs_gpu)
+    except subprocess.CalledProcessError as e:
+        util.log(kind='error', author='eval-worker', msg="SUBPROCESS_ERROR:\n%s" % str(e))
+        raise e
+    except Exception as e:
+        util.log(kind='error', author='eval-worker', msg="EXCEPTION:\n%s" % str(e))
+        raise e
+
 @ray.remote(num_cpus=1, max_calls=1)
 def work(server, task):
-    util.log(kind='info', author='eval-work', msg='starting on %d:%d:%s' % (task.problem_id, task.solver_id, server))
-    util.set_pyro_config()
-    proxy = Pyro4.Proxy(server)
-    util.log(kind='info', author='eval-work', msg='connected to %s' % server)
-
-    def query(nm_args):
-        try:
-            args    = NeuroSATArgs(n_vars=nm_args.n_vars, n_clauses=nm_args.n_clauses, CL_idxs=nm_args.CL_idxs)
-            guesses = proxy.query(args)
-            if guesses is None:
-                return neurominisat.neurosat_failed_to_guess()
-            else:
-                return neurominisat.NeuroSATGuesses(n_secs_gpu=guesses['n_secs_gpu'],
-                                                    pi_core_var_logits=guesses['pi_core_var_logits'])
-        except Exception as e:
-            tb = traceback.format_exc()
-            util.log(kind='error', author='query', msg="TASK: %s\n%s\n%s" % (str(task), str(e), tb))
-            return neurominisat.neurosat_failed_to_guess()
-
     sinfo = util.db_lookup_one(table='eval_solvers', kvs={"solver_id" : task.solver_id})
-    s     = neurominisat.NeuroSolver(func=query, cfg=build_neurosat_config(sinfo))
     pinfo = util.db_lookup_one(table='sat_problems', kvs={"problem_id" : task.problem_id})
     bbs   = BlockBlobService(account_name=auth.store_name(), account_key=auth.store_key())
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpfilename = os.path.join(tmpdir, "%s.dimacs" % str(uuid.uuid4()))
         bbs.get_blob_to_path(pinfo['bcname'], pinfo['bname'], tmpfilename)
-        s.from_file(filename=tmpfilename)
+        outfilename = os.path.join(tmpdir, "results.out")
+        status, n_secs_user, n_calls, n_fails, n_secs_gpu = call_solver(server=server, sinfo=sinfo, dimacs=tmpfilename,
+                                                                        timeout_s=task.timeout_s,
+                                                                        outfilename=outfilename)
 
-    results  = s.check_with_timeout_s(timeout_s=task.timeout_s)
+    assert(status in ["UNSAT", "SAT", "UNKNOWN"])
+
     util.db_insert(table="eval_problems",
                    eval_id=task.eval_id,
                    problem_id=task.problem_id,
                    solver_id=task.solver_id,
                    timeout_s=task.timeout_s,
-                   n_secs_user=results.n_secs_user,
-                   n_secs_call=results.n_secs_call,
-                   n_secs_gpu=results.n_secs_gpu,                                      
-                   status=str(results.status).split(".")[1])
+                   n_secs_user=n_secs_user,
+                   n_calls=n_calls,
+                   n_fails=n_fails,
+                   n_secs_gpu=n_secs_gpu,
+                   status=status)
     return None
 
 def evaluate_cdcl(opts):
@@ -93,8 +100,8 @@ def evaluate_cdcl(opts):
     [q.put(task) for task in tasks]
 
     servers           = ["%s:%s" % p
-                         for p in itertools.product(["PYRO:pyro_query_server@10.1.1.8%d" % i for i in range(1, 6)],
-                                                    ["909%d" % i for i in range(2, 6)])]
+                         for p in itertools.product(["10.1.1.9%d" % i for i in range(2, 7)],
+                                                    ["5005%d" % i for i in range(1, 5)])]
 
     util.log(kind='info', author='eval-head', msg="servers:\n%s" % str(servers))
     server_to_n_jobs  = { server : 0 for server in servers }
@@ -144,7 +151,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('redis_address', action='store', type=str)
-    parser.add_argument('solver_id', action='store', type=int)    
     parser.add_argument('--n_gpus', action='store', dest='n_gpus', type=int, default=20)
     parser.add_argument('--n_workers', action='store', dest='n_workers', type=int, default=510)
     parser.add_argument('--timeout_s', action='store', dest='timeout_s', type=int, default=5000)

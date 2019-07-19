@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package neurosat;
+
+service NeuroSATServer {
+  rpc query_neurosat (NeuroSATArgs) returns (NeuroSATGuesses) {}
+}
+
+message NeuroSATArgs {
+  int32  n_vars         = 1;
+  int32  n_clauses      = 2;
+  repeated int32 C_idxs = 3;
+  repeated int32 L_idxs = 4;
+  float  itau           = 5;
+}
+
+message NeuroSATGuesses {
+  bool   success                   = 1;
+  string msg                       = 2;
+  float n_secs_gpu                 = 3;
+  repeated float pi_core_var_ps    = 4;
+}
