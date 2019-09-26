@@ -26,7 +26,7 @@ More information can be found in the paper [https://arxiv.org/abs/1903.04671](ht
 
 There are several dependencies. For now, we list the ones that cannot be easily installed with `apt-get` or `pip3`:
 
-1. z3 (recent commit)
+1. z3 (we used commit 773c61369480b6f031eb8fa98a7eb24bd52c7070)
 2. drat-trim
 3. eigen
 4. pybind11
@@ -36,5 +36,5 @@ The code also uses a MariaDB database and an Azure storage account. Replace the 
 
 ## Team
 
-* [Daniel Selsam](https://web.stanford.edu/~dselsam/), Microsoft Research, Stanford University
+* [Daniel Selsam](https://dselsam.github.io), Microsoft Research, Stanford University
 * [Nikolaj Bj&#248;rner](https://www.microsoft.com/en-us/research/people/nbjorner/), Microsoft Research
