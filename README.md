@@ -31,6 +31,7 @@ There are several dependencies. For now, we list the ones that cannot be easily 
 3. eigen
 4. pybind11
 5. minisat
+6. grpc
 
 The code also uses a MariaDB database and an Azure storage account. Replace the fake credentials in `auth.json`.
 
