@@ -18,7 +18,7 @@ More information can be found in the paper [https://arxiv.org/abs/1903.04671](ht
 2. `python/gen_data.py`: ray script to generate training data.
 3. `python/neurosat.py`: simplified reimplementation of NeuroSAT.
 4. `python/train.py`: distributed tensorflow script to train NeuroCore.
-5. `hybrids/minisat/`: pybind11 module for a MiniSat extension that periodically queries NeuroCore.
+5. `hybrids/glucose/`: code to extend glucose with NeuroCore.
 6. `python/evaluate_cdcl.py`: ray script for evaluating solvers on benchmarks.
 7. `weights/`: the trained weights used for the experiments in the paper.
 
