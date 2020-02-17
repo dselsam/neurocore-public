@@ -1,0 +1,40 @@
+{
+    "gd_id"                       : 1,
+    "max_n_nodes"                 : 300000,
+
+    "n_parallel_reads"            : 1,
+    "n_parallel_calls"            : 5,
+    "n_prefetch"                  : 1,
+    "xla_jit"                     : true,
+
+    "n_steps_per_log"             : 100,
+    "p_log"                       : 0.05,
+    "n_steps_per_checkpoint"      : 100,
+
+    "cv_loss_scale"               : 1.0,
+    "cc_loss_scale"               : 1.0,
+    "l2_loss_scale"               : 1e-6,
+
+    "n_rounds"                    : 4,
+    "d"                           : 80,
+
+    "repeat_layers"               : true,
+    "weight_reparam"              : true,
+    "norm_axis"                   : 0,
+    "norm_eps"                    : 1e-3,
+
+    "res_layers"                  : false,
+    "learning_rate"               : 1e-4,
+
+    "clip_val_val"                : 100,
+    "clip_norm_val"               : 1e1,
+
+    "mlp_update_nl_at_end"        : false,
+    "mlp_transfer_fn"             : "relu6",
+
+    "n_update_layers"             : 1,
+    "n_score_layers"              : 3,
+
+    "LC_scale"                    : 0.1,
+    "CL_scale"                    : 0.1
+}
